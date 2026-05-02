@@ -1,0 +1,81 @@
+#cloud-config
+users:
+  - name: ${username}
+    groups: [sudo]
+    shell: /bin/bash
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    ssh_authorized_keys:
+      - ${ssh_public_key}
+
+disable_root: true
+
+package_update: true
+package_upgrade: true
+package_reboot_if_required: true
+
+packages:
+  - ufw
+  - fail2ban
+  - unattended-upgrades
+  - ca-certificates
+  - curl
+
+write_files:
+  - path: /etc/ssh/sshd_config.d/99-hardened.conf
+    content: |
+      Port ${ssh_port}
+      PermitRootLogin no
+      PasswordAuthentication no
+      PubkeyAuthentication yes
+      PermitEmptyPasswords no
+      KbdInteractiveAuthentication no
+      X11Forwarding no
+      MaxAuthTries 3
+      ClientAliveInterval 300
+      ClientAliveCountMax 2
+      AllowUsers ${username}
+
+  - path: /etc/fail2ban/jail.local
+    content: |
+      [sshd]
+      enabled = true
+      port = ${ssh_port}
+      filter = sshd
+      maxretry = 3
+      bantime = 1h
+      findtime = 10m
+
+  - path: /etc/apt/apt.conf.d/20auto-upgrades
+    content: |
+      APT::Periodic::Update-Package-Lists "1";
+      APT::Periodic::Unattended-Upgrade "1";
+      APT::Periodic::AutocleanInterval "7";
+
+  - path: /etc/apt/apt.conf.d/50unattended-upgrades
+    content: |
+      Unattended-Upgrade::Allowed-Origins {
+        "$${distro_id}:$${distro_codename}-security";
+        "$${distro_id}ESMApps:$${distro_codename}-apps-security";
+      };
+      Unattended-Upgrade::Automatic-Reboot "true";
+      Unattended-Upgrade::Automatic-Reboot-Time "04:00";
+
+runcmd:
+  # UFW
+  - ufw default deny incoming
+  - ufw default allow outgoing
+  - ufw allow ${ssh_port}/tcp
+  - ufw allow 80/tcp
+  - ufw allow 443/tcp
+  - ufw --force enable
+  # Fail2Ban
+  - systemctl enable --now fail2ban
+  # k3s
+  - curl -sfL https://get.k3s.io | sh -
+  - mkdir -p /home/${username}/.kube
+  - cp /etc/rancher/k3s/k3s.yaml /home/${username}/.kube/config
+  - chown -R ${username}:${username} /home/${username}/.kube
+  - chmod 600 /home/${username}/.kube/config
+  - echo 'export KUBECONFIG=/home/${username}/.kube/config' >> /home/${username}/.bashrc
+  # SSH
+  - systemctl restart sshd
