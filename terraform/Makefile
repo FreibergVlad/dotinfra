@@ -1,6 +1,6 @@
 TF ?= tofu
 
-.PHONY: init plan apply destroy fmt validate refresh output ip ipv6 ssh ssh-config clean
+.PHONY: init plan apply destroy fmt fmt-check validate refresh output ip ipv6 ssh ssh-config clean
 
 init: ## Initialize
 	$(TF) init
@@ -19,6 +19,9 @@ refresh: ## Refresh state
 
 fmt: ## Format .tf files
 	$(TF) fmt
+
+fmt-check: ## Check formatting (for CI)
+	$(TF) fmt -check
 
 validate: ## Validate configuration
 	$(TF) validate
